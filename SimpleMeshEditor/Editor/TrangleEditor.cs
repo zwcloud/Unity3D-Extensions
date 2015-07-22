@@ -1,7 +1,7 @@
 ﻿/*! \file		TrangleEditor.cs
  *  \author		Zou Wei, zwcloud@yeah.net
- *  \version	1.1
- *  \date		2015.7.5
+ *  \version	1.2
+ *  \date		2015.7.22
  *  \remark		
  */
 
@@ -121,24 +121,38 @@ public class TrangleEditor : Editor
             pWorld[1] = transform.TransformPoint(p[1]);
             pWorld[2] = transform.TransformPoint(p[2]);
 
-            pWorld[0] = Handles.PositionHandle(pWorld[0], Quaternion.identity);
-            pWorld[1] = Handles.PositionHandle(pWorld[1], Quaternion.identity);
-            pWorld[2] = Handles.PositionHandle(pWorld[2], Quaternion.identity);
+            Vector3[] pWorldNew = new Vector3[3];
 
-            Vector3[] vertices = mesh.vertices;
+            pWorldNew[0] = Handles.PositionHandle(pWorld[0], Quaternion.identity);
+            pWorldNew[1] = Handles.PositionHandle(pWorld[1], Quaternion.identity);
+            pWorldNew[2] = Handles.PositionHandle(pWorld[2], Quaternion.identity);
 
-            p[0] = vertices[vIndex[0]] = transform.InverseTransformPoint(pWorld[0]);
-            p[1] = vertices[vIndex[1]] = transform.InverseTransformPoint(pWorld[1]);
-            p[2] = vertices[vIndex[2]] = transform.InverseTransformPoint(pWorld[2]);
+            //Prevent self movement of vertex, which is caused by lack of precision of float type.
+            bool changed = false;
+            for (var i=0; i<3; ++i)
+            {
+                if ((pWorld[i] - pWorldNew[i]).sqrMagnitude > 0.0001)
+                {
+                    pWorld[i] = pWorldNew[i];
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                Vector3[] vertices = mesh.vertices;
 
-            //Update mesh vertexes
-            mesh.vertices = vertices;
+                p[0] = vertices[vIndex[0]] = transform.InverseTransformPoint(pWorld[0]);
+                p[1] = vertices[vIndex[1]] = transform.InverseTransformPoint(pWorld[1]);
+                p[2] = vertices[vIndex[2]] = transform.InverseTransformPoint(pWorld[2]);
 
-            mesh.RecalculateNormals();
+                mesh.vertices = vertices;
 
-            //Update mesh of the MeshCollider
-            collider.sharedMesh = null;
-            collider.sharedMesh = mesh;
+                mesh.RecalculateNormals();
+
+                //refresh sharedMesh of MeshCollider
+                collider.sharedMesh = null;
+                collider.sharedMesh = mesh;
+            }
             
             if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
             {
