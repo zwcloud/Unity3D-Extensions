@@ -5,6 +5,6 @@ using UnityEngine;
 [ExecuteInEditMode]
 public class Trangle : MonoBehaviour
 {
-
+    public Vector3 Point { set; get; }
 }
 #endif

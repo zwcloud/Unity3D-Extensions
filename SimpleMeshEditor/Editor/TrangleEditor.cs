@@ -1,8 +1,18 @@
 ﻿/*! \file		TrangleEditor.cs
  *  \author		Zou Wei, zwcloud@yeah.net
- *  \version	1.2
- *  \date		2015.7.22
+ *  \version	1.3
+ *  \date		2015.7.29
  *  \remark		
+ */
+
+/*
+# Usage
+1. Put all files into your Project
+2. Add component **Trangle.cs** to the mesh you want to edit.
+3. Select a triangle by click on a triangle you want to edit.
+4. Press Tab to switch among three vertex of the triangles.
+5. Drag the handle to move the selected vertex around. <br>
+   Or input position of the vertex directly.
  */
 
 using UnityEngine;
@@ -18,19 +28,19 @@ public class TrangleEditor : Editor
     enum TriangleEditorState
     {
         /// <summary>
-        /// now selecting a triange
+        /// now selecting a triangle
         /// </summary>
         Selecting,
         /// <summary>
-        /// now selected a triange
+        /// now selecting a vertex of the triangle
         /// </summary>
-        Selected
+        SelectingVertex,
     };
 
     /// <summary>
     /// state of the editor
     /// </summary>
-    TriangleEditorState state = TriangleEditorState.Selecting;
+    TriangleEditorState state = TriangleEditorState.SelectingTrangle;
 
     /// <summary>
     /// layer mask
@@ -69,20 +79,28 @@ public class TrangleEditor : Editor
     /// </summary>
     void OnSceneGUI()
     {
+        var trangle = target as Trangle;
+        if (trangle == null) return;
+        var meshFilter = trangle.GetComponent<MeshFilter>();
+        if (meshFilter == null) return;
+        mesh = meshFilter.sharedMesh;
+
         Event e = Event.current;
-        HandleUtility.AddDefaultControl(0);
-        RaycastHit raycastHit = new RaycastHit();
         Ray r = HandleUtility.GUIPointToWorldRay(e.mousePosition);
 
-        if(state == TriangleEditorState.Selecting)
+        if (state == TriangleEditorState.SelectingTrangle)
         {
+            RaycastHit raycastHit;
             if (Physics.Raycast(r, out raycastHit, Mathf.Infinity, layerMask))
             {
+                if (raycastHit.transform.gameObject != trangle.gameObject)
+                {
+                    return;
+                }
+
                 collider = raycastHit.collider as MeshCollider;
                 if (collider == null || collider.sharedMesh == null)
                     return;
-
-                mesh = collider.sharedMesh;
 
                 int[] triangles = mesh.triangles;
                 vIndex[0] = triangles[raycastHit.triangleIndex * 3];
@@ -98,68 +116,59 @@ public class TrangleEditor : Editor
 
                 DrawTrangle();
 
-                Handles.color = Color.green;
-                Handles.SphereCap(0, raycastHit.point, Quaternion.identity, 0.1f);
-
                 if (e.type == EventType.MouseDown && e.button == 0)
                 {
-                    state = TriangleEditorState.Selected;
+                    state = TriangleEditorState.SelectingVertex;
                 }
 
                 SceneView.RepaintAll();
             }
         }
-        else
+        else if (state == TriangleEditorState.SelectingVertex)
         {
             if (mesh == null)
                 return;
+
             DrawTrangle();
 
-            Vector3[] pWorld = new Vector3[3];
-
-            pWorld[0] = transform.TransformPoint(p[0]);
-            pWorld[1] = transform.TransformPoint(p[1]);
-            pWorld[2] = transform.TransformPoint(p[2]);
-
-            Vector3[] pWorldNew = new Vector3[3];
-
-            pWorldNew[0] = Handles.PositionHandle(pWorld[0], Quaternion.identity);
-            pWorldNew[1] = Handles.PositionHandle(pWorld[1], Quaternion.identity);
-            pWorldNew[2] = Handles.PositionHandle(pWorld[2], Quaternion.identity);
-
-            //Prevent self movement of vertex, which is caused by lack of precision of float type.
-            bool changed = false;
-            for (var i=0; i<3; ++i)
+            if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Tab)
             {
-                if ((pWorld[i] - pWorldNew[i]).sqrMagnitude > 0.0001)
+                SelectedVertexNumber++;
+                if (SelectedVertexNumber == 3)
                 {
-                    pWorld[i] = pWorldNew[i];
-                    changed = true;
+                    SelectedVertexNumber = 0;
                 }
             }
-            if (changed)
+
+            var localPos = p[SelectedVertexNumber];
+            var worldPos = transform.TransformPoint(localPos);
+            trangle.Point = worldPos;
+
+            var worldPosNew = Handles.PositionHandle(worldPos, Quaternion.identity);
+
+            if ((worldPos - worldPosNew).sqrMagnitude > 0.0001)
             {
                 Vector3[] vertices = mesh.vertices;
-
-                p[0] = vertices[vIndex[0]] = transform.InverseTransformPoint(pWorld[0]);
-                p[1] = vertices[vIndex[1]] = transform.InverseTransformPoint(pWorld[1]);
-                p[2] = vertices[vIndex[2]] = transform.InverseTransformPoint(pWorld[2]);
-
+                p[SelectedVertexNumber] = vertices[vIndex[SelectedVertexNumber]] = transform.InverseTransformPoint(worldPosNew);
                 mesh.vertices = vertices;
-
                 mesh.RecalculateNormals();
-
-                //refresh sharedMesh of MeshCollider
+                //Update mesh of the collider
                 collider.sharedMesh = null;
                 collider.sharedMesh = mesh;
             }
-            
+            Repaint();
+
             if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
             {
-                state = TriangleEditorState.Selecting;
+                state = TriangleEditorState.SelectingTrangle;
             }
+            SceneView.RepaintAll();
         }
+    }
 
+    public TrangleEditor()
+    {
+        SelectedVertexNumber = 0;
     }
 
     #region for flash
@@ -198,5 +207,22 @@ public class TrangleEditor : Editor
         Handles.DrawLine(pWorld[1], pWorld[2]);
         Handles.DrawLine(pWorld[2], pWorld[0]);
     }
-
+    public override void OnInspectorGUI()
+    {
+        if (mesh == null) return;
+        var trangle = target as Trangle;
+        if (trangle == null) return;
+        var newPoint = EditorGUILayout.Vector3Field("Vertex Position", trangle.Point);
+        if ((newPoint - trangle.Point).sqrMagnitude > 0.0001)
+        {
+            trangle.Point = newPoint;
+            Vector3[] vertices = mesh.vertices;
+            vertices[vIndex[SelectedVertexNumber]] = transform.InverseTransformPoint(trangle.Point);
+            mesh.vertices = vertices;
+            mesh.RecalculateNormals();
+            //Update mesh of the collider
+            collider.sharedMesh = null;
+            collider.sharedMesh = mesh;
+        }
+    }
 }
